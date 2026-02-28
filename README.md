@@ -1,1 +1,2 @@
-hi there
+hello there
+this is a gtest
