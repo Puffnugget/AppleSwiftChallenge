@@ -6,9 +6,10 @@ class CameraEngine: NSObject, ObservableObject {
     @Published var isAuthorized: Bool = false
     @Published var isRunning: Bool = false
 
-    private let captureSession = AVCaptureSession()
+    let captureSession = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.pulselight.camera")
     private var videoOutput: AVCaptureVideoDataOutput?
+    private var sampleCallback: ((Double, TimeInterval) -> Void)?
 
     override init() {
         super.init()
@@ -30,15 +31,23 @@ class CameraEngine: NSObject, ObservableObject {
         }
     }
 
-    func start() {
+    func start(onSample: @escaping (Double, TimeInterval) -> Void) {
         guard isAuthorized else { return }
+        sampleCallback = onSample
         sessionQueue.async { [weak self] in
-            self?.configureSession()
-            self?.captureSession.startRunning()
+            guard let self = self else { return }
+            self.configureSession()
+            self.captureSession.startRunning()
+            // Ensure torch is on after session starts
+            self.setTorch(on: true)
             DispatchQueue.main.async {
-                self?.isRunning = true
+                self.isRunning = true
             }
         }
+    }
+    
+    func start() {
+        start(onSample: { _, _ in })
     }
 
     func stop() {
@@ -89,7 +98,6 @@ class CameraEngine: NSObject, ObservableObject {
         }
 
         captureSession.commitConfiguration()
-        setTorch(on: true)
     }
 
     private func setTorch(on: Bool) {
@@ -111,6 +119,9 @@ class CameraEngine: NSObject, ObservableObject {
 extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        // Extract hardware presentation timestamp for accurate sample rate measurement
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
 
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
@@ -150,5 +161,8 @@ extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate {
         DispatchQueue.main.async {
             self.brightness = meanRed
         }
+        
+        // Call callback with both brightness and timestamp
+        sampleCallback?(meanRed, timestamp)
     }
 }

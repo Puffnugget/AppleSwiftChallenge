@@ -7,8 +7,7 @@ class DemoSignalProvider: ObservableObject {
     private var timer: AnyCancellable?
     private var index = 0
 
-    // Precomputed 600 brightness values simulating ~72 BPM pulse at 30 fps
-    // 72 BPM = 1.2 Hz, period = 25 frames at 30 fps
+ 
     static let demoSignal: [Double] = {
         var values: [Double] = []
         let sampleRate = 30.0
@@ -16,14 +15,28 @@ class DemoSignalProvider: ObservableObject {
         let freq = bpm / 60.0
         for i in 0..<600 {
             let t = Double(i) / sampleRate
-            // Simulate PPG: fundamental + harmonics + noise
-            let fundamental = sin(2.0 * .pi * freq * t)
-            let harmonic2 = 0.3 * sin(2.0 * .pi * 2.0 * freq * t)
-            let harmonic3 = 0.15 * sin(2.0 * .pi * 3.0 * freq * t + 0.5)
+            let phase = (2.0 * .pi * freq * t).truncatingRemainder(dividingBy: 2.0 * .pi)
+            
+            // Heartbeat pattern: sharp peak (systole) + gentler wave (diastole)
+            let heartbeat: Double
+            if phase < .pi {
+                // Systolic phase: sharp exponential rise and fall
+                let normalizedPhase = phase / .pi
+                heartbeat = exp(-8.0 * pow(normalizedPhase - 0.3, 2)) + 0.3 * exp(-20.0 * pow(normalizedPhase - 0.5, 2))
+            } else {
+                // Diastolic phase: gentler decline with dicrotic notch
+                let normalizedPhase = (phase - .pi) / .pi
+                let dicroticNotch = 0.15 * exp(-30.0 * pow(normalizedPhase - 0.3, 2))
+                heartbeat = 0.4 * (1.0 - normalizedPhase) + dicroticNotch
+            }
+            
+            // Add harmonics for more realistic shape
+            let harmonic2 = 0.2 * sin(2.0 * .pi * 2.0 * freq * t)
+            let harmonic3 = 0.1 * sin(2.0 * .pi * 3.0 * freq * t + 0.5)
             // Small random-ish perturbation using deterministic function
-            let noise = 0.05 * sin(Double(i) * 0.7 + 3.14) * cos(Double(i) * 0.3)
+            let noise = 0.03 * sin(Double(i) * 0.7 + 3.14) * cos(Double(i) * 0.3)
             // Base brightness around 180 (typical red channel value)
-            let value = 180.0 + 8.0 * (fundamental + harmonic2 + harmonic3) + noise
+            let value = 180.0 + 12.0 * heartbeat + 3.0 * (harmonic2 + harmonic3) + noise
             values.append(value)
         }
         return values

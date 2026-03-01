@@ -26,9 +26,29 @@ class SessionStore: ObservableObject {
         }
     }
 
-    func save(_ session: PulseSession) {
-        sessions.insert(session, at: 0)
+    // MARK: - CRUD
+
+    func create(_ session: PulseSession) {
+        upsert(session)
+    }
+
+    func read(sessionID: UUID) -> PulseSession? {
+        sessions.first(where: { $0.id == sessionID })
+    }
+
+    func update(_ session: PulseSession) {
+        upsert(session)
+    }
+
+    func delete(sessionID: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions.remove(at: index)
         persist()
+    }
+
+    // Backward-compatible alias used by older call sites.
+    func save(_ session: PulseSession) {
+        create(session)
     }
 
     func delete(at offsets: IndexSet) {
@@ -39,6 +59,16 @@ class SessionStore: ObservableObject {
     func updateBloodPressure(for sessionID: UUID, bp: BloodPressure) {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         sessions[index].bloodPressure = bp
+        persist()
+    }
+
+    private func upsert(_ session: PulseSession) {
+        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions[index] = session
+        } else {
+            sessions.append(session)
+        }
+        sessions.sort { $0.date > $1.date }
         persist()
     }
 

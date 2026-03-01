@@ -3,30 +3,65 @@ import SwiftUI
 // MARK: - Colors
 
 enum PulseColors {
-    static let primary = Color.red
+    // Primary brand color - vibrant red
+    static let primary = Color(red: 0.95, green: 0.2, blue: 0.25)
+    static let primaryDark = Color(red: 0.85, green: 0.15, blue: 0.2)
+    
+    // Backgrounds
     static let background = Color(.systemBackground)
     static let secondaryBackground = Color(.secondarySystemBackground)
     static let cardBackground = Color(.tertiarySystemBackground)
+    
+    // Labels
     static let label = Color(.label)
     static let secondaryLabel = Color(.secondaryLabel)
-    static let waveform = Color.red
-    static let waveformGradientTop = Color.red.opacity(0.3)
-    static let waveformGradientBottom = Color.red.opacity(0.05)
-    static let confidence = Color.green
-    static let warning = Color.orange
-    static let demoBanner = Color.blue
+    
+    // Waveform
+    static let waveform = Color(red: 0.95, green: 0.2, blue: 0.25)
+    static let waveformGradientTop = Color(red: 0.95, green: 0.2, blue: 0.25).opacity(0.4)
+    static let waveformGradientBottom = Color(red: 0.95, green: 0.2, blue: 0.25).opacity(0.08)
+    
+    // Status colors
+    static let confidence = Color(red: 0.2, green: 0.75, blue: 0.4)
+    static let warning = Color(red: 1.0, green: 0.6, blue: 0.2)
+    static let demoBanner = Color(red: 0.2, green: 0.5, blue: 0.95)
+    
+    // Gradients
+    static let primaryGradient = LinearGradient(
+        colors: [primary, primaryDark],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    
+    static let cardGradient = LinearGradient(
+        colors: [cardBackground, cardBackground.opacity(0.8)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 }
 
 // MARK: - Typography
 
 enum PulseTypography {
-    static let largeTitle = Font.largeTitle.weight(.bold)
-    static let title = Font.title2.weight(.semibold)
-    static let headline = Font.headline
-    static let body = Font.body
-    static let caption = Font.caption
-    static let bpmDisplay = Font.system(size: 72, weight: .bold, design: .rounded)
-    static let bpmUnit = Font.title3.weight(.medium)
+    // Display fonts - SF Pro Display for headings
+    static let largeTitle = Font.system(size: 34, weight: .bold, design: .default)
+    static let title = Font.system(size: 22, weight: .semibold, design: .default)
+    static let title2 = Font.system(size: 20, weight: .semibold, design: .default)
+    static let headline = Font.system(size: 17, weight: .semibold, design: .default)
+    
+    // Text fonts - SF Pro Text for body
+    static let body = Font.system(size: 17, weight: .regular, design: .default)
+    static let bodyBold = Font.system(size: 17, weight: .semibold, design: .default)
+    static let callout = Font.system(size: 16, weight: .regular, design: .default)
+    static let subheadline = Font.system(size: 15, weight: .regular, design: .default)
+    static let footnote = Font.system(size: 13, weight: .regular, design: .default)
+    static let caption = Font.system(size: 12, weight: .regular, design: .default)
+    static let caption2 = Font.system(size: 11, weight: .regular, design: .default)
+    
+    // Specialized displays
+    static let bpmDisplay = Font.system(size: 76, weight: .bold, design: .rounded)
+    static let bpmUnit = Font.system(size: 20, weight: .medium, design: .rounded)
+    static let countdownDisplay = Font.system(size: 56, weight: .bold, design: .rounded)
 }
 
 // MARK: - Haptics
@@ -45,6 +80,41 @@ enum PulseHaptics {
     static func warning() {
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.warning)
+    }
+}
+
+// MARK: - Shadows & Effects
+
+enum PulseShadows {
+    static let small = Shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+    static let medium = Shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+    static let large = Shadow(color: .black.opacity(0.2), radius: 16, x: 0, y: 8)
+    
+    struct Shadow {
+        let color: Color
+        let radius: CGFloat
+        let x: CGFloat
+        let y: CGFloat
+    }
+}
+
+// MARK: - Button Styles
+
+struct PrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct SecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

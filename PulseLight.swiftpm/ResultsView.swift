@@ -4,29 +4,32 @@ struct ResultsView: View {
     let session: PulseSession
     var onDismiss: () -> Void
 
-    @EnvironmentObject var sessionStore: SessionStore
-    @State private var saved = false
-
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 28) {
                 Text("Your Results")
                     .font(PulseTypography.largeTitle)
+                    .foregroundColor(PulseColors.label)
                     .padding(.top, 20)
 
                 // BPM Ring
                 BPMRingView(bpm: session.bpm, confidence: session.confidence)
 
                 // Confidence badge
-                HStack {
+                HStack(spacing: 10) {
                     Image(systemName: confidenceIcon)
+                        .font(.system(size: 16, weight: .semibold))
                     Text("Signal Quality: \(session.confidenceLabel)")
+                        .font(PulseTypography.bodyBold)
                 }
-                .font(PulseTypography.body)
                 .foregroundColor(confidenceColor)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(confidenceColor.opacity(0.12), in: Capsule())
+                .padding(.horizontal, 22)
+                .padding(.vertical, 12)
+                .background(
+                    Capsule()
+                        .fill(confidenceColor.opacity(0.15))
+                        .shadow(color: confidenceColor.opacity(0.2), radius: 6, x: 0, y: 3)
+                )
 
                 if session.isDemo {
                     HStack {
@@ -41,40 +44,40 @@ struct ResultsView: View {
                 }
 
                 // Full waveform
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Waveform")
-                        .font(PulseTypography.headline)
-                        .foregroundColor(PulseColors.label)
-                    WaveformView(data: session.waveform, maxPoints: 300, height: 180)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(PulseColors.primary)
+                        Text("Waveform")
+                            .font(PulseTypography.headline)
+                            .foregroundColor(PulseColors.label)
+                    }
+                    WaveformView(data: session.waveform, maxPoints: 300, height: 180, showYAxis: true)
                 }
-                .padding()
-                .background(PulseColors.cardBackground, in: RoundedRectangle(cornerRadius: 16))
+                .padding(20)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(PulseColors.cardBackground)
+                        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+                )
                 .padding(.horizontal)
 
                 // Actions
-                VStack(spacing: 12) {
-                    if !saved {
-                        Button {
-                            sessionStore.save(session)
-                            saved = true
-                            PulseHaptics.success()
-                        } label: {
-                            HStack {
-                                Image(systemName: "square.and.arrow.down.fill")
-                                Text("Save Session")
-                            }
+                VStack(spacing: 14) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                        Text("Session Saved")
                             .font(PulseTypography.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(PulseColors.primary, in: RoundedRectangle(cornerRadius: 16))
-                        }
-                        .padding(.horizontal, 32)
-                    } else {
-                        Label("Session Saved", systemImage: "checkmark.circle.fill")
-                            .font(PulseTypography.headline)
-                            .foregroundColor(PulseColors.confidence)
                     }
+                    .foregroundColor(PulseColors.confidence)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .background(
+                        Capsule()
+                            .fill(PulseColors.confidence.opacity(0.15))
+                    )
 
                     Button {
                         onDismiss()
@@ -83,12 +86,18 @@ struct ResultsView: View {
                             .font(PulseTypography.headline)
                             .foregroundColor(PulseColors.primary)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, 18)
                             .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(PulseColors.primary, lineWidth: 2)
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(PulseColors.primary.opacity(0.08))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18)
+                                            .stroke(PulseColors.primary, lineWidth: 2)
+                                    )
                             )
+                            .shadow(color: PulseColors.primary.opacity(0.15), radius: 8, x: 0, y: 4)
                     }
+                    .buttonStyle(SecondaryButtonStyle())
                     .padding(.horizontal, 32)
                 }
 

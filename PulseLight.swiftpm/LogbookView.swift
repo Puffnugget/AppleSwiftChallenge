@@ -3,7 +3,6 @@ import SwiftUI
 struct LogbookView: View {
     @EnvironmentObject var sessionStore: SessionStore
     @State private var selectedSession: PulseSession?
-    @State private var showBPSheet = false
     @State private var systolicText = ""
     @State private var diastolicText = ""
 
@@ -16,23 +15,35 @@ struct LogbookView: View {
             }
         }
         .navigationTitle("Logbook")
-        .sheet(isPresented: $showBPSheet) {
-            bpEntrySheet
+        .sheet(item: $selectedSession) { session in
+            bpEntrySheet(for: session)
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "heart.text.square")
-                .font(.system(size: 60))
-                .foregroundColor(PulseColors.secondaryLabel)
-            Text("No sessions yet")
-                .font(PulseTypography.title)
-                .foregroundColor(PulseColors.secondaryLabel)
-            Text("Complete a measurement to see it here")
-                .font(PulseTypography.body)
-                .foregroundColor(PulseColors.secondaryLabel)
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(PulseColors.primary.opacity(0.1))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "heart.text.square")
+                    .font(.system(size: 48, weight: .medium))
+                    .foregroundColor(PulseColors.primary)
+            }
+            .shadow(color: PulseColors.primary.opacity(0.15), radius: 8, x: 0, y: 4)
+            
+            VStack(spacing: 8) {
+                Text("No sessions yet")
+                    .font(PulseTypography.title)
+                    .foregroundColor(PulseColors.label)
+                Text("Complete a measurement to see it here")
+                    .font(PulseTypography.body)
+                    .foregroundColor(PulseColors.secondaryLabel)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
         }
+        .padding(.top, 60)
     }
 
     private var sessionList: some View {
@@ -41,7 +52,6 @@ struct LogbookView: View {
                 SessionRow(session: session)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        selectedSession = session
                         if let bp = session.bloodPressure {
                             systolicText = "\(bp.systolic)"
                             diastolicText = "\(bp.diastolic)"
@@ -49,7 +59,7 @@ struct LogbookView: View {
                             systolicText = ""
                             diastolicText = ""
                         }
-                        showBPSheet = true
+                        selectedSession = session
                     }
                     .accessibilityLabel("Session on \(session.formattedDate), \(session.formattedBPM) BPM")
                     .accessibilityHint("Tap to add blood pressure reading")
@@ -61,70 +71,84 @@ struct LogbookView: View {
         .listStyle(.insetGrouped)
     }
 
-    private var bpEntrySheet: some View {
+    private func bpEntrySheet(for session: PulseSession) -> some View {
         NavigationView {
             VStack(spacing: 24) {
-                if let session = selectedSession {
-                    // Session summary
-                    VStack(spacing: 8) {
-                        Text("\(session.formattedBPM) BPM")
-                            .font(PulseTypography.title)
+                // Session summary
+                VStack(spacing: 8) {
+                    Text("\(session.formattedBPM) BPM")
+                        .font(PulseTypography.title)
+                        .foregroundColor(PulseColors.primary)
+                    Text(session.formattedDate)
+                        .font(PulseTypography.caption)
+                        .foregroundColor(PulseColors.secondaryLabel)
+                }
+                .padding(.top)
+
+                // Waveform preview
+                WaveformView(data: session.waveform, maxPoints: 200, height: 100)
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(PulseColors.cardBackground)
+                            .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
+                    )
+                    .padding(.horizontal)
+
+                // BP entry
+                VStack(spacing: 18) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "heart.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(PulseColors.primary)
-                        Text(session.formattedDate)
-                            .font(PulseTypography.caption)
-                            .foregroundColor(PulseColors.secondaryLabel)
-                    }
-                    .padding(.top)
-
-                    // Waveform preview
-                    WaveformView(data: session.waveform, maxPoints: 200, height: 100)
-                        .padding(.horizontal)
-
-                    // BP entry
-                    VStack(spacing: 16) {
                         Text("Add Blood Pressure Reading")
                             .font(PulseTypography.headline)
+                    }
 
-                        Text("Enter your cuff measurement")
-                            .font(PulseTypography.caption)
-                            .foregroundColor(PulseColors.secondaryLabel)
+                    Text("Enter your cuff measurement")
+                        .font(PulseTypography.footnote)
+                        .foregroundColor(PulseColors.secondaryLabel)
 
-                        HStack(spacing: 16) {
-                            VStack {
-                                Text("Systolic")
-                                    .font(PulseTypography.caption)
-                                    .foregroundColor(PulseColors.secondaryLabel)
-                                TextField("120", text: $systolicText)
-                                    .keyboardType(.numberPad)
-                                    .textFieldStyle(.roundedBorder)
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 100)
-                            }
-
-                            Text("/")
-                                .font(PulseTypography.title)
+                    HStack(spacing: 16) {
+                        VStack {
+                            Text("Systolic")
+                                .font(PulseTypography.caption)
                                 .foregroundColor(PulseColors.secondaryLabel)
-
-                            VStack {
-                                Text("Diastolic")
-                                    .font(PulseTypography.caption)
-                                    .foregroundColor(PulseColors.secondaryLabel)
-                                TextField("80", text: $diastolicText)
-                                    .keyboardType(.numberPad)
-                                    .textFieldStyle(.roundedBorder)
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 100)
-                            }
+                            TextField("120", text: $systolicText)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.roundedBorder)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 100)
                         }
 
-                        Text("mmHg")
-                            .font(PulseTypography.caption)
+                        Text("/")
+                            .font(PulseTypography.title)
                             .foregroundColor(PulseColors.secondaryLabel)
+
+                        VStack {
+                            Text("Diastolic")
+                                .font(PulseTypography.caption)
+                                .foregroundColor(PulseColors.secondaryLabel)
+                            TextField("80", text: $diastolicText)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.roundedBorder)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 100)
+                        }
                     }
-                    .padding()
-                    .background(PulseColors.cardBackground, in: RoundedRectangle(cornerRadius: 16))
-                    .padding(.horizontal)
+
+                    Text("mmHg")
+                        .font(PulseTypography.caption)
+                        .foregroundColor(PulseColors.secondaryLabel)
                 }
+                .padding(20)
+                .background(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(PulseColors.cardBackground)
+                        .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 4)
+                )
+                .padding(.horizontal)
 
                 Spacer()
             }
@@ -132,7 +156,7 @@ struct LogbookView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showBPSheet = false }
+                    Button("Cancel") { selectedSession = nil }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
@@ -156,7 +180,7 @@ struct LogbookView: View {
         let bp = BloodPressure(systolic: sys, diastolic: dia)
         sessionStore.updateBloodPressure(for: session.id, bp: bp)
         PulseHaptics.success()
-        showBPSheet = false
+        selectedSession = nil
     }
 }
 
@@ -166,15 +190,20 @@ private struct SessionRow: View {
     var body: some View {
         HStack(spacing: 16) {
             // BPM badge
-            VStack {
+            VStack(spacing: 2) {
                 Text(session.formattedBPM)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(PulseColors.primary)
                 Text("BPM")
-                    .font(PulseTypography.caption)
+                    .font(PulseTypography.caption2)
                     .foregroundColor(PulseColors.secondaryLabel)
             }
-            .frame(width: 60)
+            .frame(width: 64)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(PulseColors.primary.opacity(0.1))
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.formattedDate)

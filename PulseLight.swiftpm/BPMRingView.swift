@@ -8,35 +8,38 @@ struct BPMRingView: View {
     @State private var animatedProgress: Double = 0
     @State private var showBPM = false
 
-    private var ringColor: Color {
-        if confidence >= 0.7 { return PulseColors.confidence }
-        if confidence >= 0.4 { return PulseColors.warning }
-        return PulseColors.primary
-    }
+    private let ringColor: Color = PulseColors.primary
 
     var body: some View {
         ZStack {
             // Background ring
             Circle()
-                .stroke(ringColor.opacity(0.2), lineWidth: 12)
+                .stroke(ringColor.opacity(0.15), lineWidth: 14)
                 .frame(width: size, height: size)
 
-            // Animated progress ring
+            // Animated progress ring with gradient
             Circle()
                 .trim(from: 0, to: animatedProgress)
                 .stroke(
-                    ringColor,
-                    style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                    AngularGradient(
+                        colors: [ringColor, ringColor.opacity(0.7)],
+                        center: .center,
+                        startAngle: .degrees(-90),
+                        endAngle: .degrees(270)
+                    ),
+                    style: StrokeStyle(lineWidth: 14, lineCap: .round)
                 )
                 .frame(width: size, height: size)
                 .rotationEffect(.degrees(-90))
+                .shadow(color: ringColor.opacity(0.3), radius: 8, x: 0, y: 4)
 
             // BPM text
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 Text(showBPM ? "\(Int(bpm.rounded()))" : "--")
                     .font(PulseTypography.bpmDisplay)
                     .foregroundColor(PulseColors.label)
                     .contentTransition(.numericText())
+                    .shadow(color: PulseColors.primary.opacity(0.15), radius: 4, x: 0, y: 2)
 
                 Text("BPM")
                     .font(PulseTypography.bpmUnit)
@@ -45,7 +48,7 @@ struct BPMRingView: View {
         }
         .onAppear {
             withAnimation(.easeOut(duration: 1.0)) {
-                animatedProgress = min(1.0, confidence)
+                animatedProgress = 1.0
             }
             withAnimation(.easeIn(duration: 0.5).delay(0.3)) {
                 showBPM = true

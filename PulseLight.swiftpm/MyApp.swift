@@ -15,6 +15,22 @@ struct PulseApp: App {
 
 struct ContentRootView: View {
     @Binding var hasSeenOnboarding: Bool
+    @State private var hasCompletedHowItWorks = false
+    @State private var selectedTab = 0
+
+    private var tabSelection: Binding<Int> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                // Prevent switching to Logbook (1) or Insights (2) during onboarding
+                if !hasCompletedHowItWorks && (newValue == 1 || newValue == 2) {
+                    // Keep on Measure tab (0)
+                    return
+                }
+                selectedTab = newValue
+            }
+        )
+    }
 
     var body: some View {
         if !hasSeenOnboarding {
@@ -23,32 +39,65 @@ struct ContentRootView: View {
                 set: { val in hasSeenOnboarding = !val }
             ))
         } else {
-            TabView {
+            TabView(selection: tabSelection) {
                 NavigationView {
-                    CaptureView()
+                    CaptureView(hasCompletedHowItWorks: $hasCompletedHowItWorks)
                 }
                 .navigationViewStyle(.stack)
                 .tabItem {
                     Label("Measure", systemImage: "heart.fill")
                 }
+                .tag(0)
 
                 NavigationView {
-                    LogbookView()
+                    if hasCompletedHowItWorks {
+                        LogbookView()
+                    } else {
+                        OnboardingPlaceholderView()
+                    }
                 }
                 .navigationViewStyle(.stack)
                 .tabItem {
                     Label("Logbook", systemImage: "list.bullet.rectangle")
                 }
+                .tag(1)
 
                 NavigationView {
-                    InsightsView()
+                    if hasCompletedHowItWorks {
+                        InsightsView()
+                    } else {
+                        OnboardingPlaceholderView()
+                    }
                 }
                 .navigationViewStyle(.stack)
                 .tabItem {
                     Label("Insights", systemImage: "chart.xyaxis.line")
                 }
+                .tag(2)
             }
             .tint(PulseColors.primary)
+        }
+    }
+}
+
+struct OnboardingPlaceholderView: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 48))
+                .foregroundColor(PulseColors.secondaryLabel.opacity(0.5))
+            
+            Text("Complete onboarding to access this feature")
+                .font(PulseTypography.body)
+                .foregroundColor(PulseColors.secondaryLabel)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PulseColors.background)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Prevent any interaction
         }
     }
 }

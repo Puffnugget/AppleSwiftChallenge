@@ -7,87 +7,123 @@ class PPGProcessor: ObservableObject {
     @Published var filteredWaveform: [Double] = []
     @Published var hasValidEstimate: Bool = false
 
-    private var ringBuffer: [Double] = []
     private let bufferSize = PulseConstants.bufferSize
-    private let sampleRate = PulseConstants.sampleRate
 
-    // IIR filter state (2nd order biquad sections)
-    // High-pass 0.5 Hz at fs=30 Hz
+    // Actual sample rate measured from hardware timestamps
+    private var measuredSampleRate: Double = PulseConstants.sampleRate
+    private var sampleTimestamps: [TimeInterval] = []
+
+    // BPM smoothing
+    private var bpmHistory: [Double] = []
+    private let bpmHistorySize = 4
+
+    // All smoothed readings across the session, used for final average
+    private var allBPMReadings: [Double] = []
+
+    var sessionAverageBPM: Double {
+        guard !allBPMReadings.isEmpty else { return currentBPM }
+        return allBPMReadings.reduce(0, +) / Double(allBPMReadings.count)
+    }
+
+    // IIR bandpass: high-pass 0.5 Hz then low-pass 4 Hz at fs=30 Hz
     private let hpB: [Double] = [0.9695, -1.9391, 0.9695]
     private let hpA: [Double] = [1.0, -1.9380, 0.9401]
     private var hpX: [Double] = [0, 0, 0]
     private var hpY: [Double] = [0, 0, 0]
 
-    // Low-pass 4 Hz at fs=30 Hz
     private let lpB: [Double] = [0.1296, 0.2592, 0.1296]
     private let lpA: [Double] = [1.0, -0.5095, 0.0280]
     private var lpX: [Double] = [0, 0, 0]
     private var lpY: [Double] = [0, 0, 0]
 
+    // Internal buffer — mutated on whatever thread ingest() is called from
+    private var internalFiltered: [Double] = []
+
     func reset() {
-        ringBuffer.removeAll()
+        bpmHistory.removeAll()
+        allBPMReadings.removeAll()
         filteredWaveform.removeAll()
+        sampleTimestamps.removeAll()
+        internalFiltered.removeAll()
         currentBPM = 0
         confidence = 0
         hasValidEstimate = false
-        hpX = [0, 0, 0]
-        hpY = [0, 0, 0]
-        lpX = [0, 0, 0]
-        lpY = [0, 0, 0]
+        measuredSampleRate = PulseConstants.sampleRate
+        hpX = [0, 0, 0]; hpY = [0, 0, 0]
+        lpX = [0, 0, 0]; lpY = [0, 0, 0]
     }
 
-    func ingest(_ value: Double) {
-        ringBuffer.append(value)
-        if ringBuffer.count > bufferSize {
-            ringBuffer.removeFirst(ringBuffer.count - bufferSize)
+    func ingest(_ value: Double, at timestamp: TimeInterval = 0) {
+        // Measure real sample rate from hardware timestamps
+        if timestamp > 0 {
+            sampleTimestamps.append(timestamp)
+            if sampleTimestamps.count > bufferSize { sampleTimestamps.removeFirst() }
+            if sampleTimestamps.count >= 30 {
+                let elapsed = sampleTimestamps.last! - sampleTimestamps.first!
+                if elapsed > 0 { measuredSampleRate = Double(sampleTimestamps.count - 1) / elapsed }
+            }
         }
 
-        // Apply IIR filter to latest sample
         let filtered = applyFilter(value)
-        filteredWaveform.append(filtered)
-        if filteredWaveform.count > bufferSize {
-            filteredWaveform.removeFirst(filteredWaveform.count - bufferSize)
-        }
+        internalFiltered.append(filtered)
+        if internalFiltered.count > bufferSize { internalFiltered.removeFirst() }
 
-        if ringBuffer.count >= PulseConstants.minimumFramesForEstimate {
-            computeBPM()
+        // Snapshot for UI and BPM computation — publish to main thread
+        let snapshot = internalFiltered
+        let fs = measuredSampleRate
+        DispatchQueue.main.async {
+            self.filteredWaveform = snapshot
+            if snapshot.count >= PulseConstants.minimumFramesForEstimate {
+                self.computeBPM(signal: snapshot, fs: fs)
+            }
         }
     }
 
     private func applyFilter(_ x: Double) -> Double {
-        // High-pass
         hpX[0] = x
-        let hpOut = hpB[0] * hpX[0] + hpB[1] * hpX[1] + hpB[2] * hpX[2]
-                  - hpA[1] * hpY[1] - hpA[2] * hpY[2]
+        let hpOut = hpB[0]*hpX[0] + hpB[1]*hpX[1] + hpB[2]*hpX[2]
+                  - hpA[1]*hpY[1] - hpA[2]*hpY[2]
         hpX[2] = hpX[1]; hpX[1] = hpX[0]
         hpY[2] = hpY[1]; hpY[1] = hpOut
 
-        // Low-pass
         lpX[0] = hpOut
-        let lpOut = lpB[0] * lpX[0] + lpB[1] * lpX[1] + lpB[2] * lpX[2]
-                  - lpA[1] * lpY[1] - lpA[2] * lpY[2]
+        let lpOut = lpB[0]*lpX[0] + lpB[1]*lpX[1] + lpB[2]*lpX[2]
+                  - lpA[1]*lpY[1] - lpA[2]*lpY[2]
         lpX[2] = lpX[1]; lpX[1] = lpX[0]
         lpY[2] = lpY[1]; lpY[1] = lpOut
 
         return lpOut
     }
 
-    private func computeBPM() {
-        let n = ringBuffer.count
-        guard n >= PulseConstants.minimumFramesForEstimate else { return }
+    // Called on main thread with a snapshot of the filtered buffer
+    private func computeBPM(signal: [Double], fs: Double) {
+        let n = signal.count
 
-        // Detrend: subtract mean
-        var signal = ringBuffer
+        // Minimum amplitude check — if the signal is nearly flat, no finger is present.
+        // A real PPG signal has an AC amplitude of at least 0.3 units after bandpass filtering.
+        let sigMin = signal.min() ?? 0
+        let sigMax = signal.max() ?? 0
+        guard (sigMax - sigMin) > 0.3 else {
+            hasValidEstimate = false
+            return
+        }
+
+        // Mean-subtract
+        var s = signal
         var mean: Double = 0
-        vDSP_meanvD(signal, 1, &mean, vDSP_Length(n))
+        vDSP_meanvD(s, 1, &mean, vDSP_Length(n))
         var negMean = -mean
-        vDSP_vsaddD(signal, 1, &negMean, &signal, 1, vDSP_Length(n))
+        vDSP_vsaddD(s, 1, &negMean, &s, 1, vDSP_Length(n))
+
+        // Hann window to reduce spectral leakage
+        for i in 0..<n {
+            s[i] *= 0.5 * (1.0 - cos(2.0 * .pi * Double(i) / Double(n - 1)))
+        }
 
         // Zero-pad to next power of 2
         let fftLength = nextPowerOfTwo(n)
-        signal.append(contentsOf: [Double](repeating: 0, count: fftLength - n))
+        s.append(contentsOf: [Double](repeating: 0, count: fftLength - n))
 
-        // FFT
         let log2n = vDSP_Length(log2(Double(fftLength)))
         guard let fftSetup = vDSP_create_fftsetupD(log2n, FFTRadix(kFFTRadix2)) else { return }
         defer { vDSP_destroy_fftsetupD(fftSetup) }
@@ -95,71 +131,54 @@ class PPGProcessor: ObservableObject {
         var realPart = [Double](repeating: 0, count: fftLength / 2)
         var imagPart = [Double](repeating: 0, count: fftLength / 2)
 
-        signal.withUnsafeBufferPointer { signalPtr in
-            realPart.withUnsafeMutableBufferPointer { realPtr in
-                imagPart.withUnsafeMutableBufferPointer { imagPtr in
-                    var splitComplex = DSPDoubleSplitComplex(
-                        realp: realPtr.baseAddress!,
-                        imagp: imagPtr.baseAddress!
-                    )
-                    signalPtr.baseAddress!.withMemoryRebound(to: DSPDoubleComplex.self, capacity: fftLength / 2) { complexPtr in
-                        vDSP_ctozD(complexPtr, 2, &splitComplex, 1, vDSP_Length(fftLength / 2))
+        s.withUnsafeBufferPointer { sp in
+            realPart.withUnsafeMutableBufferPointer { rp in
+                imagPart.withUnsafeMutableBufferPointer { ip in
+                    var split = DSPDoubleSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+                    sp.baseAddress!.withMemoryRebound(to: DSPDoubleComplex.self, capacity: fftLength / 2) { cp in
+                        vDSP_ctozD(cp, 2, &split, 1, vDSP_Length(fftLength / 2))
                     }
-                    vDSP_fft_zripD(fftSetup, &splitComplex, 1, log2n, FFTDirection(kFFTDirection_Forward))
+                    vDSP_fft_zripD(fftSetup, &split, 1, log2n, FFTDirection(kFFTDirection_Forward))
                 }
             }
         }
 
-        // Magnitude spectrum
         var magnitudes = [Double](repeating: 0, count: fftLength / 2)
-        realPart.withUnsafeMutableBufferPointer { realPtr in
-            imagPart.withUnsafeMutableBufferPointer { imagPtr in
-                var splitComplex = DSPDoubleSplitComplex(
-                    realp: realPtr.baseAddress!,
-                    imagp: imagPtr.baseAddress!
-                )
-                vDSP_zvmagsD(&splitComplex, 1, &magnitudes, 1, vDSP_Length(fftLength / 2))
+        realPart.withUnsafeMutableBufferPointer { rp in
+            imagPart.withUnsafeMutableBufferPointer { ip in
+                var split = DSPDoubleSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+                vDSP_zvmagsD(&split, 1, &magnitudes, 1, vDSP_Length(fftLength / 2))
             }
         }
 
-        // Frequency resolution
-        let freqResolution = sampleRate / Double(fftLength)
-
-        // Find peak in 0.5–4 Hz range (30–240 BPM)
-        let minBin = max(1, Int(0.5 / freqResolution))
-        let maxBin = min(fftLength / 2 - 1, Int(4.0 / freqResolution))
-
+        let freqResolution = fs / Double(fftLength)
+        let minBin = max(1, Int((0.67 / freqResolution).rounded()))
+        let maxBin = min(fftLength / 2 - 2, Int((3.0 / freqResolution).rounded()))
         guard minBin < maxBin else { return }
 
         var peakMag: Double = 0
-        var peakBin: Int = minBin
+        var peakBin = minBin
         for i in minBin...maxBin {
-            if magnitudes[i] > peakMag {
-                peakMag = magnitudes[i]
-                peakBin = i
-            }
+            if magnitudes[i] > peakMag { peakMag = magnitudes[i]; peakBin = i }
         }
 
-        let peakFreq = Double(peakBin) * freqResolution
-        let bpm = peakFreq * 60.0
+        let bpm = Double(peakBin) * freqResolution * 60.0
+        guard bpm >= 40 && bpm <= 180 else { return }
 
-        // Confidence: peak-to-mean ratio in the search band
+        // Confidence: peak vs band mean
         let bandSlice = Array(magnitudes[minBin...maxBin])
         var bandMean: Double = 0
         vDSP_meanvD(bandSlice, 1, &bandMean, vDSP_Length(bandSlice.count))
+        let conf = bandMean > 0 ? min(1.0, peakMag / (bandMean * 10.0)) : 0
 
-        let conf: Double
-        if bandMean > 0 {
-            conf = min(1.0, peakMag / (bandMean * 10.0))
-        } else {
-            conf = 0
-        }
+        bpmHistory.append(bpm)
+        if bpmHistory.count > bpmHistorySize { bpmHistory.removeFirst() }
 
-        DispatchQueue.main.async {
-            self.currentBPM = bpm
-            self.confidence = conf
-            self.hasValidEstimate = true
-        }
+        let smoothed = bpmHistory.reduce(0, +) / Double(bpmHistory.count)
+        currentBPM = smoothed
+        allBPMReadings.append(smoothed)
+        confidence = conf
+        hasValidEstimate = true
     }
 
     private func nextPowerOfTwo(_ n: Int) -> Int {

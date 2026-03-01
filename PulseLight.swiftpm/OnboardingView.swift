@@ -32,13 +32,14 @@ struct OnboardingView: View {
             )
             .onAppear { animatePulse = true }
 
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 Text("PulseLight")
                     .font(PulseTypography.largeTitle)
                     .foregroundColor(PulseColors.label)
+                    .shadow(color: PulseColors.primary.opacity(0.1), radius: 4, x: 0, y: 2)
 
                 Text("See your pulse using light")
-                    .font(PulseTypography.title)
+                    .font(PulseTypography.title2)
                     .foregroundColor(PulseColors.secondaryLabel)
                     .multilineTextAlignment(.center)
             }
@@ -56,13 +57,32 @@ struct OnboardingView: View {
                 PulseHaptics.pulse()
                 showOnboarding = false
             } label: {
-                Text("Get Started")
-                    .font(PulseTypography.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(PulseColors.primary, in: RoundedRectangle(cornerRadius: 16))
+                HStack(spacing: 10) {
+                    Text("Get Started")
+                        .font(PulseTypography.headline)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(PulseColors.primaryGradient)
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.2), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    }
+                )
+                .shadow(color: PulseColors.primary.opacity(0.4), radius: 12, x: 0, y: 6)
             }
+            .buttonStyle(PrimaryButtonStyle())
             .padding(.horizontal, 32)
             .padding(.bottom, 40)
         }
@@ -76,13 +96,19 @@ private struct FeatureRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(PulseColors.primary)
-                .frame(width: 32)
+            ZStack {
+                Circle()
+                    .fill(PulseColors.primary.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(PulseColors.primary)
+            }
             Text(text)
                 .font(PulseTypography.body)
                 .foregroundColor(PulseColors.label)
+            Spacer()
         }
+        .padding(.vertical, 4)
     }
 }
